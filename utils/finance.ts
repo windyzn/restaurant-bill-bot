@@ -65,7 +65,7 @@ export const solveDebts = (
   // Merge balances for couples
   const processedBalances: Record<string, number> = {};
   const processedFriendIds = new Set<string>();
-  const couplesMap: Record<string, string> = {}; // combinedId -> display name
+  const namesMap: Record<string, string> = {}; 
 
   friends.forEach(f => {
     if (processedFriendIds.has(f.id)) return;
@@ -75,15 +75,17 @@ export const solveDebts = (
       if (partner) {
         const combinedId = `couple_${f.id}_${partner.id}`;
         processedBalances[combinedId] = (balances[f.id] || 0) + (balances[partner.id] || 0);
-        couplesMap[combinedId] = `${f.name} & ${partner.name}`;
+        namesMap[combinedId] = `${f.name} & ${partner.name}`;
         processedFriendIds.add(f.id);
         processedFriendIds.add(partner.id);
       } else {
         processedBalances[f.id] = balances[f.id] || 0;
+        namesMap[f.id] = f.name;
         processedFriendIds.add(f.id);
       }
     } else {
       processedBalances[f.id] = balances[f.id] || 0;
+      namesMap[f.id] = f.name;
       processedFriendIds.add(f.id);
     }
   });
@@ -107,10 +109,9 @@ export const solveDebts = (
       settleList.push({
         from: debtor,
         to: creditor,
-        amount: Number(amount.toFixed(2)),
-        isFromCouple: debtor.startsWith('couple_'),
-        isToCouple: creditor.startsWith('couple_'),
-        coupleNames: debtor.startsWith('couple_') ? couplesMap[debtor] : (creditor.startsWith('couple_') ? couplesMap[creditor] : undefined)
+        fromName: namesMap[debtor],
+        toName: namesMap[creditor],
+        amount: Number(amount.toFixed(2))
       });
     }
 

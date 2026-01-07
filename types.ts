@@ -25,12 +25,11 @@ export interface PaymentRecord {
 }
 
 export interface Settlement {
-  from: string; // Friend ID (or Couple name/combined ID string)
-  to: string;   // Friend ID
+  from: string; 
+  to: string;   
+  fromName: string;
+  toName: string;
   amount: number;
-  isFromCouple?: boolean;
-  isToCouple?: boolean;
-  coupleNames?: string;
 }
 
 export const GST_RATE = 0.05;
