@@ -159,7 +159,7 @@ const App: React.FC = () => {
   };
 
   const shareResults = async () => {
-    let text = `🤖 Bill Bot Results:\n\n` + 
+    let text = `🤖 Billi Results:\n\n` + 
       `Total Bill: $${calculations.grandTotal.toFixed(2)}\n` +
       `-------------------\n`;
     if (calculations.settlements.length > 0) {
@@ -170,7 +170,7 @@ const App: React.FC = () => {
     if (etransferEmail.trim()) {
       text += `\n\n💰 e-Transfer to: ${etransferEmail.trim()}`;
     }
-    text += `\n\nCheck out Bill Bot 🤖 https://restaurant-bill-bot.vercel.app/`;
+    text += `\n\nCheck out Billi 🤖 https://restaurant-bill-bot.vercel.app/`;
     
     if (navigator.share) {
       try { await navigator.share({ title: 'Bill Split Report', text }); } catch (err) {}
@@ -182,7 +182,7 @@ const App: React.FC = () => {
 
   const getBotSpeech = () => {
     switch (step) {
-      case 1: return "Hello! I'm Bill. Who are we splitting the bill with today? You can link couples too!";
+      case 1: return "Hello! I'm Billi. Who are we splitting the bill with today? You can link couples too!";
       case 2: return "Let's record everything that was ordered. Type in items below!";
       case 3: 
         if (tipMode === 'total' && manualGrandTotal === 0) {
