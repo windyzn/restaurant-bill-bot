@@ -3,7 +3,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Friend, BillItem, TaxCategory, GST_RATE, PST_RATE } from './types';
 import { calculateIndividualCosts, solveDebts, calculateItemTotals } from './utils/finance';
 import StepProgress from './components/StepProgress';
-import { scanBillWithGemini } from './services/geminiService';
 
 const BotIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -28,29 +27,16 @@ const App: React.FC = () => {
   const [tipPercent, setTipPercent] = useState<number>(15);
   const [manualGrandTotal, setManualGrandTotal] = useState<number>(0);
   const [payments, setPayments] = useState<Record<string, number>>({});
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanStatus, setScanStatus] = useState("Initializing...");
   const [showQuickEntry, setShowQuickEntry] = useState(false);
   const [quickAmount, setQuickAmount] = useState<string>('');
   const [quickIncludesTax, setQuickIncludesTax] = useState(false);
   const [etransferEmail, setEtransferEmail] = useState('');
   const [linkingFriendId, setLinkingFriendId] = useState<string | null>(null);
+  const [showCoupleHint, setShowCoupleHint] = useState(false);
 
   const nextStep = () => setStep(s => Math.min(s + 1, 5));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
   const goToStep = (s: number) => setStep(s);
-
-  useEffect(() => {
-    if (isScanning) {
-      const statuses = ["Analyzing image...", "Reading line items...", "Extracting prices...", "Categorizing taxes...", "Almost done..."];
-      let i = 0;
-      const interval = setInterval(() => {
-        i = (i + 1) % statuses.length;
-        setScanStatus(statuses[i]);
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [isScanning]);
 
   const addFriend = (name: string) => {
     if (!name.trim()) return;
@@ -113,7 +99,7 @@ const App: React.FC = () => {
       addItem("Lump Sum Total", amount, TaxCategory.FOOD, quickIncludesTax);
       setQuickAmount('');
       setShowQuickEntry(false);
-      nextStep(); // Take user to step 3 directly
+      nextStep();
     }
   };
 
@@ -139,31 +125,6 @@ const App: React.FC = () => {
   const splitAllEvenly = () => {
     const allFriendIds = friends.map(f => f.id);
     setItems(items.map(item => ({ ...item, sharedWith: [...allFriendIds] })));
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsScanning(true);
-    setScanStatus("Uploading to Bill Bot...");
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(',')[1];
-        const extracted = await scanBillWithGemini(base64);
-        const mappedItems = extracted.map((i: any) => ({
-          ...i,
-          id: Math.random().toString(36).substr(2, 9),
-          sharedWith: friends.map(f => f.id)
-        }));
-        setItems(prev => [...prev, ...mappedItems]);
-        setIsScanning(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error("Scanning failed", err);
-      setIsScanning(false);
-    }
   };
 
   const calculations = useMemo(() => {
@@ -209,7 +170,8 @@ const App: React.FC = () => {
     if (etransferEmail.trim()) {
       text += `\n\n💰 e-Transfer to: ${etransferEmail.trim()}`;
     }
-    text += `\n\nSplit with Bill Bot 🤖`;
+    text += `\n\nCheck out Bill Bot 🤖 https://restaurant-bill-bot.vercel.app/`;
+    
     if (navigator.share) {
       try { await navigator.share({ title: 'Bill Split Report', text }); } catch (err) {}
     } else {
@@ -221,35 +183,20 @@ const App: React.FC = () => {
   const getBotSpeech = () => {
     switch (step) {
       case 1: return "Hello! I'm Bill. Who are we splitting the bill with today? You can link couples too!";
-      case 2: return "Let's record everything that was ordered. You can even scan the receipt!";
+      case 2: return "Let's record everything that was ordered. Type in items below!";
       case 3: 
         if (tipMode === 'total' && manualGrandTotal === 0) {
-          return "I can calculate the tip automatically! Just enter the final total from the bottom of your bill below.";
+          return "I can calculate the tip automatically! Just enter the final bill total from your receipt.";
         }
-        return "Time to assign the items. Tap a name to add someone to the split!";
+        return "Time to assign the items. Tap names to split things up!";
       case 4: return "Almost there! Tell me who paid what on the final bill.";
-      case 5: return "Calculation complete! I've found the most efficient way for you to settle up.";
+      case 5: return "Calculation complete! I've found the most efficient way to settle up.";
       default: return "Beep boop!";
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center p-0 md:p-8">
-      {/* Scanning Overlay */}
-      {isScanning && (
-        <div className="fixed inset-0 z-[100] bg-indigo-900/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-white animate-in fade-in duration-300">
-          <div className="relative">
-            <BotIcon className="w-24 h-24 mb-6 bot-float text-indigo-200" />
-            <div className="absolute inset-0 bg-indigo-400/20 blur-2xl rounded-full scale-150 animate-pulse"></div>
-          </div>
-          <h2 className="text-2xl font-black mb-2">Analyzing Receipt</h2>
-          <p className="text-indigo-200 font-mono text-sm tracking-widest uppercase animate-pulse">{scanStatus}</p>
-          <div className="mt-8 w-48 h-1.5 bg-indigo-800 rounded-full overflow-hidden">
-            <div className="h-full bg-indigo-400 w-1/2 rounded-full animate-[progress_1.5s_infinite_linear]"></div>
-          </div>
-        </div>
-      )}
-
       <div className="w-full max-w-lg bg-white min-h-screen md:min-h-0 md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-slate-200 relative">
         <header className="bg-indigo-700 px-8 py-10 text-white relative overflow-hidden">
           <div className="absolute top-10 right-8 bot-float opacity-30"><BotIcon className="w-16 h-16" /></div>
@@ -278,6 +225,7 @@ const App: React.FC = () => {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
                 </button>
               </div>
+
               <div className="grid grid-cols-1 gap-3">
                 {friends.map(f => {
                   const partner = friends.find(p => p.id === f.partnerId);
@@ -303,6 +251,22 @@ const App: React.FC = () => {
                   );
                 })}
               </div>
+              
+              <div className="px-1 text-left">
+                <button 
+                  onClick={() => setShowCoupleHint(!showCoupleHint)}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-tight hover:text-indigo-500 transition-colors"
+                >
+                  <HeartIcon className="w-2.5 h-2.5" />
+                  What is linking?
+                </button>
+                {showCoupleHint && (
+                  <p className="mt-1 text-[9px] text-slate-400 font-medium leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    Linking two people combines their debt. They will be treated as one unit in the final results. Tap the heart icon on any person to start linking!
+                  </p>
+                )}
+              </div>
+
               {linkingFriendId && <div className="text-center animate-pulse text-xs font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 py-2 rounded-xl">Select another person to link with</div>}
             </div>
           )}
@@ -311,11 +275,6 @@ const App: React.FC = () => {
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
               <div className="flex justify-between items-center">
                 <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Entry List</h2>
-                <label className={`flex items-center gap-2 text-xs font-bold bg-indigo-50 px-4 py-2 rounded-xl cursor-pointer hover:bg-indigo-100 border border-indigo-200 transition-all ${isScanning ? 'opacity-50 pointer-events-none' : 'text-indigo-600'}`}>
-                  <svg className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                  {isScanning ? 'Scanning...' : 'Scan Receipt'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-                </label>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 shadow-inner">
                 <div className="flex p-1 bg-slate-200 rounded-xl">
@@ -390,29 +349,37 @@ const App: React.FC = () => {
                 <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest">Share Mapping</h2>
                 <button onClick={splitAllEvenly} className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200 uppercase hover:bg-indigo-600 hover:text-white transition-all">Split Evenly</button>
               </div>
-              <div className="space-y-4 max-h-[35vh] overflow-y-auto pr-1 no-scrollbar">
-                {items.map(item => (
-                  <div key={item.id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all">
-                    <div className="bg-slate-50 px-5 py-3 flex justify-between items-center border-b border-slate-100">
-                      <span className="font-bold text-slate-800 text-sm truncate">{item.name}</span>
-                      <span className="text-[10px] font-black text-slate-500 bg-white px-3 py-1 rounded-lg border border-slate-200">
-                        ${(item.isTaxIncluded ? item.price : (item.price * (1 + GST_RATE + (item.taxCategory === TaxCategory.CONTAINERS ? PST_RATE : 0)))).toFixed(2)} Total
-                      </span>
+              <div className="relative">
+                <div className={`space-y-4 max-h-[35vh] overflow-y-auto pr-1 no-scrollbar rounded-3xl ${items.length > 2 ? 'scroll-hint' : ''}`}>
+                  {items.map(item => (
+                    <div key={item.id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all">
+                      <div className="bg-slate-50 px-5 py-3 flex justify-between items-center border-b border-slate-100">
+                        <span className="font-bold text-slate-800 text-sm truncate">{item.name}</span>
+                        <span className="text-[10px] font-black text-slate-500 bg-white px-3 py-1 rounded-lg border border-slate-200">
+                          ${(item.isTaxIncluded ? item.price : (item.price * (1 + GST_RATE + (item.taxCategory === TaxCategory.CONTAINERS ? PST_RATE : 0)))).toFixed(2)} Total
+                        </span>
+                      </div>
+                      <div className="p-4 flex flex-wrap gap-2">
+                        {friends.map(f => (
+                          <button key={f.id} onClick={() => toggleShare(item.id, f.id)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${item.sharedWith.includes(f.id) ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-300'}`}>
+                            {f.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="p-4 flex flex-wrap gap-2">
-                      {friends.map(f => (
-                        <button key={f.id} onClick={() => toggleShare(item.id, f.id)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all border-2 ${item.sharedWith.includes(f.id) ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-300'}`}>
-                          {f.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                {items.length > 2 && <div className="text-center text-[9px] font-black text-slate-300 uppercase tracking-widest mt-1">↓ Scroll for more items ↓</div>}
               </div>
+              
               <div className="pt-4 border-t-2 border-slate-100">
                 <div className="flex justify-between items-center mb-3">
                   <div className="flex flex-col">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Add Tip / Bill Total</label>
+                    <button onClick={() => setTipMode('total')} className="text-[9px] font-black text-indigo-500 flex items-center gap-1 mt-1 hover:text-indigo-700 transition-colors">
+                      <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                      Calculate tip for me?
+                    </button>
                   </div>
                   <div className="flex bg-slate-100 p-1 rounded-xl">
                     <button onClick={() => setTipMode('percent')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'percent' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>%</button>
