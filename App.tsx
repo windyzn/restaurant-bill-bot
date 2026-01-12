@@ -188,15 +188,8 @@ const App: React.FC = () => {
       const totalCost = calculations.itemCosts[f.id] || 0;
       
       if (totalCost > 0) {
-        text += `\n${f.name}: $${totalCost.toFixed(2)}\n`;
-        friendItems.forEach(item => {
-          const shareCount = item.sharedWith.length;
-          const taxRate = item.isTaxIncluded ? 0 : (GST_RATE + (item.taxCategory === TaxCategory.CONTAINERS ? PST_RATE : 0));
-          const itemTotalWithTax = item.price * (1 + taxRate);
-          const shareAmount = itemTotalWithTax / shareCount;
-          
-          text += `  • ${item.name}: $${shareAmount.toFixed(2)}${shareCount > 1 ? ` (${shareCount}x split)` : ''}\n`;
-        });
+        const itemNames = friendItems.map(item => item.name).join(', ');
+        text += `${f.name}: $${totalCost.toFixed(2)} (${itemNames})\n`;
       }
     });
 
