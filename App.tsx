@@ -189,22 +189,14 @@ const App: React.FC = () => {
       
       if (totalCost > 0) {
         text += `\n${f.name}: $${totalCost.toFixed(2)}\n`;
-        let itemsSumWithTax = 0;
-        
         friendItems.forEach(item => {
           const shareCount = item.sharedWith.length;
           const taxRate = item.isTaxIncluded ? 0 : (GST_RATE + (item.taxCategory === TaxCategory.CONTAINERS ? PST_RATE : 0));
           const itemTotalWithTax = item.price * (1 + taxRate);
           const shareAmount = itemTotalWithTax / shareCount;
-          itemsSumWithTax += shareAmount;
           
-          text += `  • ${item.name}: $${shareAmount.toFixed(2)}${shareCount > 1 ? ` (Split ${shareCount}x)` : ''}\n`;
+          text += `  • ${item.name}: $${shareAmount.toFixed(2)}${shareCount > 1 ? ` (${shareCount}x split)` : ''}\n`;
         });
-
-        const adjustment = totalCost - itemsSumWithTax;
-        if (Math.abs(adjustment) > 0.01) {
-          text += `  • Tip/Discount adjustment: ${adjustment > 0 ? '+' : ''}$${adjustment.toFixed(2)}\n`;
-        }
       }
     });
 
@@ -219,7 +211,14 @@ const App: React.FC = () => {
   const shareResults = async () => {
     const text = generateReportText();
     if (navigator.share) {
-      try { await navigator.share({ title: 'Bill Summary', text }); } catch (err) {}
+      try { 
+        await navigator.share({ 
+          title: 'Bill Summary', 
+          text: text 
+        }); 
+      } catch (err) {
+        copyToClipboard();
+      }
     } else {
       copyToClipboard();
     }
@@ -232,7 +231,19 @@ const App: React.FC = () => {
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 2000);
     } catch (err) {
-      alert("Failed to copy! (Beep boop)");
+      // Fallback for some browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopyFeedback(true);
+        setTimeout(() => setCopyFeedback(false), 2000);
+      } catch (err) {
+        alert("Failed to copy! Please select and copy manually.");
+      }
+      document.body.removeChild(textArea);
     }
   };
 
