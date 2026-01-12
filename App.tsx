@@ -25,6 +25,9 @@ const App: React.FC = () => {
   const [tip, setTip] = useState<number>(0);
   const [tipMode, setTipMode] = useState<'amount' | 'percent' | 'total'>('percent');
   const [tipPercent, setTipPercent] = useState<number>(15);
+  const [discount, setDiscount] = useState<number>(0);
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
+  const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [manualGrandTotal, setManualGrandTotal] = useState<number>(0);
   const [payments, setPayments] = useState<Record<string, number>>({});
   const [showQuickEntry, setShowQuickEntry] = useState(false);
@@ -33,6 +36,7 @@ const App: React.FC = () => {
   const [etransferEmail, setEtransferEmail] = useState('');
   const [linkingFriendId, setLinkingFriendId] = useState<string | null>(null);
   const [showCoupleHint, setShowCoupleHint] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   const nextStep = () => setStep(s => Math.min(s + 1, 5));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
@@ -129,21 +133,31 @@ const App: React.FC = () => {
 
   const calculations = useMemo(() => {
     const totals = calculateItemTotals(items);
+    
+    let effectiveDiscount = discount;
+    if (discountMode === 'percent') {
+      effectiveDiscount = totals.subtotal * (discountPercent / 100);
+    }
+
     let effectiveTip = tip;
     if (tipMode === 'percent') {
       effectiveTip = totals.subtotal * (tipPercent / 100);
     } else if (tipMode === 'total') {
-      effectiveTip = Math.max(0, manualGrandTotal - totals.total);
+      effectiveTip = Math.max(0, manualGrandTotal - totals.total + effectiveDiscount);
     }
-    const itemCosts = calculateIndividualCosts(friends, items, effectiveTip);
-    const grandTotal = totals.total + effectiveTip;
+
+    const netAdjustment = effectiveTip - effectiveDiscount;
+    const itemCosts = calculateIndividualCosts(friends, items, netAdjustment);
+    const grandTotal = totals.total + effectiveTip - effectiveDiscount;
+    
     const balances: Record<string, number> = {};
     friends.forEach(f => {
       balances[f.id] = (payments[f.id] || 0) - (itemCosts[f.id] || 0);
     });
     const settlements = solveDebts(balances, friends);
-    return { itemCosts, totals, grandTotal, settlements, effectiveTip };
-  }, [friends, items, tip, tipMode, tipPercent, manualGrandTotal, payments]);
+    
+    return { itemCosts, totals, grandTotal, settlements, effectiveTip, effectiveDiscount };
+  }, [friends, items, tip, tipMode, tipPercent, discount, discountMode, discountPercent, manualGrandTotal, payments]);
 
   const paidTotal = useMemo(() => 
     (Object.values(payments) as number[]).reduce((acc, curr) => acc + (curr || 0), 0),
@@ -158,25 +172,67 @@ const App: React.FC = () => {
     setPayments(newPayments);
   };
 
-  const shareResults = async () => {
-    let text = `🤖 Billi Results:\n\n` + 
-      `Total Bill: $${calculations.grandTotal.toFixed(2)}\n` +
-      `-------------------\n`;
-    if (calculations.settlements.length > 0) {
-      text += calculations.settlements.map(s => `• ${s.fromName} pays ${s.toName}: $${s.amount.toFixed(2)}`).join('\n');
-    } else {
-      text += "Everyone is settled! ✅";
-    }
-    if (etransferEmail.trim()) {
-      text += `\n\n💰 e-Transfer to: ${etransferEmail.trim()}`;
-    }
-    text += `\n\nCheck out Billi 🤖 https://restaurant-bill-bot.vercel.app/`;
+  const generateReportText = () => {
+    let text = `Total Bill: $${calculations.grandTotal.toFixed(2)}\n`;
+    text += `-------------------\n`;
     
+    if (calculations.settlements.length > 0) {
+      text += `SETTLEMENTS:\n`;
+      text += calculations.settlements.map(s => `• ${s.fromName} pays ${s.toName}: $${s.amount.toFixed(2)}`).join('\n');
+      text += `\n-------------------\n`;
+    }
+
+    text += `BREAKDOWN:\n`;
+    friends.forEach(f => {
+      const friendItems = items.filter(item => item.sharedWith.includes(f.id));
+      const totalCost = calculations.itemCosts[f.id] || 0;
+      
+      if (totalCost > 0) {
+        text += `\n${f.name}: $${totalCost.toFixed(2)}\n`;
+        let itemsSumWithTax = 0;
+        
+        friendItems.forEach(item => {
+          const shareCount = item.sharedWith.length;
+          const taxRate = item.isTaxIncluded ? 0 : (GST_RATE + (item.taxCategory === TaxCategory.CONTAINERS ? PST_RATE : 0));
+          const itemTotalWithTax = item.price * (1 + taxRate);
+          const shareAmount = itemTotalWithTax / shareCount;
+          itemsSumWithTax += shareAmount;
+          
+          text += `  • ${item.name}: $${shareAmount.toFixed(2)}${shareCount > 1 ? ` (Split ${shareCount}x)` : ''}\n`;
+        });
+
+        const adjustment = totalCost - itemsSumWithTax;
+        if (Math.abs(adjustment) > 0.01) {
+          text += `  • Tip/Discount adjustment: ${adjustment > 0 ? '+' : ''}$${adjustment.toFixed(2)}\n`;
+        }
+      }
+    });
+
+    if (etransferEmail.trim()) {
+      text += `\n💰 e-Transfer to: ${etransferEmail.trim()}\n`;
+    }
+    
+    text += `\nSplit via Bill Bot 🤖 https://restaurant-bill-bot.vercel.app/`;
+    return text;
+  };
+
+  const shareResults = async () => {
+    const text = generateReportText();
     if (navigator.share) {
-      try { await navigator.share({ title: 'Bill Split Report', text }); } catch (err) {}
+      try { await navigator.share({ title: 'Bill Summary', text }); } catch (err) {}
     } else {
+      copyToClipboard();
+    }
+  };
+
+  const copyToClipboard = async () => {
+    const text = generateReportText();
+    try {
       await navigator.clipboard.writeText(text);
-      alert("Results copied to clipboard! (Beep boop)");
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    } catch (err) {
+      alert("Failed to copy! (Beep boop)");
     }
   };
 
@@ -350,7 +406,7 @@ const App: React.FC = () => {
                 <button onClick={splitAllEvenly} className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200 uppercase hover:bg-indigo-600 hover:text-white transition-all">Split Evenly</button>
               </div>
               <div className="relative">
-                <div className={`space-y-4 max-h-[35vh] overflow-y-auto pr-1 no-scrollbar rounded-3xl ${items.length > 2 ? 'scroll-hint' : ''}`}>
+                <div className={`space-y-4 max-h-[30vh] overflow-y-auto pr-1 no-scrollbar rounded-3xl ${items.length > 2 ? 'scroll-hint' : ''}`}>
                   {items.map(item => (
                     <div key={item.id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all">
                       <div className="bg-slate-50 px-5 py-3 flex justify-between items-center border-b border-slate-100">
@@ -372,39 +428,65 @@ const App: React.FC = () => {
                 {items.length > 2 && <div className="text-center text-[9px] font-black text-slate-300 uppercase tracking-widest mt-1">↓ Scroll for more items ↓</div>}
               </div>
               
-              <div className="pt-4 border-t-2 border-slate-100">
-                <div className="flex justify-between items-center mb-3">
-                  <div className="flex flex-col">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Add Tip / Bill Total</label>
-                    <button onClick={() => setTipMode('total')} className="text-[9px] font-black text-indigo-500 flex items-center gap-1 mt-1 hover:text-indigo-700 transition-colors">
-                      <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                      Calculate tip for me?
-                    </button>
+              <div className="pt-4 border-t-2 border-slate-100 space-y-6">
+                {/* TIP SECTION */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Add Tip / Bill Total</label>
+                      <button onClick={() => setTipMode('total')} className="text-[9px] font-black text-indigo-500 flex items-center gap-1 mt-1 hover:text-indigo-700 transition-colors">
+                        <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Calculate tip for me?
+                      </button>
+                    </div>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button onClick={() => setTipMode('percent')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'percent' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>%</button>
+                      <button onClick={() => setTipMode('amount')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'amount' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>$</button>
+                      <button onClick={() => setTipMode('total')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'total' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>BILL TOTAL</button>
+                    </div>
                   </div>
-                  <div className="flex bg-slate-100 p-1 rounded-xl">
-                    <button onClick={() => setTipMode('percent')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'percent' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>%</button>
-                    <button onClick={() => setTipMode('amount')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'amount' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>$</button>
-                    <button onClick={() => setTipMode('total')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${tipMode === 'total' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>BILL TOTAL</button>
+                  {tipMode === 'total' ? (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="relative group max-w-[240px] mx-auto">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg text-indigo-600">$</span>
+                        <input type="number" inputMode="decimal" value={manualGrandTotal || ''} onChange={(e) => setManualGrandTotal(parseFloat(e.target.value) || 0)} placeholder="Total..." className="w-full bg-slate-50 border-2 border-indigo-100 rounded-xl py-3 pl-8 pr-4 text-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none transition-all" autoFocus />
+                      </div>
+                      <div className="flex justify-between items-center px-4 bg-emerald-50 py-2 rounded-xl border border-emerald-100">
+                        <span className="text-[9px] font-black text-emerald-600 uppercase">Calculated Tip</span>
+                        <span className="text-sm font-black text-emerald-700 font-mono">${calculations.effectiveTip.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative max-w-[160px] mx-auto">
+                      <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg transition-colors ${tipMode === 'amount' ? 'text-indigo-600' : 'hidden'}`}>$</span>
+                      <input type="number" inputMode="decimal" value={tipMode === 'percent' ? tipPercent : (tip || '')} onChange={(e) => tipMode === 'percent' ? setTipPercent(parseFloat(e.target.value) || 0) : setTip(parseFloat(e.target.value) || 0)} className={`w-full bg-slate-50 border-2 border-slate-200 rounded-xl py-3 text-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none transition-all shadow-sm ${tipMode === 'amount' ? 'pl-8' : ''}`} />
+                      <span className={`absolute right-4 top-1/2 -translate-y-1/2 font-black text-lg transition-colors ${tipMode === 'percent' ? 'text-indigo-600' : 'hidden'}`}>%</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* DISCOUNT SECTION */}
+                <div className="space-y-3 pt-4 border-t border-slate-100">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Add Discount</label>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button onClick={() => setDiscountMode('percent')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${discountMode === 'percent' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>%</button>
+                      <button onClick={() => setDiscountMode('amount')} className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${discountMode === 'amount' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>$</button>
+                    </div>
+                  </div>
+                  <div className="relative max-w-[160px] mx-auto">
+                    <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg transition-colors text-rose-600 ${discountMode === 'amount' ? '' : 'hidden'}`}>-$</span>
+                    <input 
+                      type="number" 
+                      inputMode="decimal" 
+                      value={discountMode === 'percent' ? (discountPercent || '') : (discount || '')} 
+                      onChange={(e) => discountMode === 'percent' ? setDiscountPercent(parseFloat(e.target.value) || 0) : setDiscount(parseFloat(e.target.value) || 0)} 
+                      placeholder="0"
+                      className={`w-full bg-slate-50 border-2 border-slate-200 rounded-xl py-3 text-xl font-black text-rose-600 text-center focus:border-rose-400 outline-none transition-all shadow-sm ${discountMode === 'amount' ? 'pl-10' : ''}`} 
+                    />
+                    <span className={`absolute right-4 top-1/2 -translate-y-1/2 font-black text-lg transition-colors text-rose-600 ${discountMode === 'percent' ? '' : 'hidden'}`}>% off</span>
                   </div>
                 </div>
-                {tipMode === 'total' ? (
-                  <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="relative group max-w-[240px] mx-auto">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg text-indigo-600">$</span>
-                      <input type="number" inputMode="decimal" value={manualGrandTotal || ''} onChange={(e) => setManualGrandTotal(parseFloat(e.target.value) || 0)} placeholder="Total..." className="w-full bg-slate-50 border-2 border-indigo-100 rounded-xl py-3 pl-8 pr-4 text-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none transition-all" autoFocus />
-                    </div>
-                    <div className="flex justify-between items-center px-4 bg-emerald-50 py-2 rounded-xl border border-emerald-100">
-                      <span className="text-[9px] font-black text-emerald-600 uppercase">Calculated Tip</span>
-                      <span className="text-sm font-black text-emerald-700 font-mono">${calculations.effectiveTip.toFixed(2)}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative max-w-[160px] mx-auto">
-                    <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black text-lg transition-colors ${tipMode === 'amount' ? 'text-indigo-600' : 'hidden'}`}>$</span>
-                    <input type="number" inputMode="decimal" value={tipMode === 'percent' ? tipPercent : (tip || '')} onChange={(e) => tipMode === 'percent' ? setTipPercent(parseFloat(e.target.value) || 0) : setTip(parseFloat(e.target.value) || 0)} className={`w-full bg-slate-50 border-2 border-slate-200 rounded-xl py-3 text-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none transition-all shadow-sm ${tipMode === 'amount' ? 'pl-8' : ''}`} />
-                    <span className={`absolute right-4 top-1/2 -translate-y-1/2 font-black text-lg transition-colors ${tipMode === 'percent' ? 'text-indigo-600' : 'hidden'}`}>%</span>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -495,11 +577,22 @@ const App: React.FC = () => {
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v10a2 2 0 002 2z"/></svg></div>
                 </div>
               </div>
-              <div className="pt-4 pb-10">
-                <button onClick={shareResults} className="w-full flex items-center justify-center gap-3 bg-indigo-600 text-white px-8 py-5 rounded-[2rem] text-sm font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                  Share Report
-                </button>
+              
+              <div className="pt-4 pb-10 space-y-3">
+                <div className="flex gap-3">
+                  <button onClick={shareResults} className="flex-1 flex items-center justify-center gap-3 bg-indigo-600 text-white px-4 py-5 rounded-[2rem] text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                    Share
+                  </button>
+                  <button onClick={copyToClipboard} className={`flex-1 flex items-center justify-center gap-3 border-2 px-4 py-5 rounded-[2rem] text-xs font-black uppercase tracking-widest transition-all ${copyFeedback ? 'bg-emerald-50 border-emerald-500 text-emerald-600' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600'}`}>
+                    {copyFeedback ? (
+                      <svg className="w-5 h-5 animate-in zoom-in duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                    )}
+                    {copyFeedback ? 'Copied!' : 'Copy Text'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
