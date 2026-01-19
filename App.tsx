@@ -183,15 +183,19 @@ const App: React.FC = () => {
     }
 
     text += `BREAKDOWN:\n`;
-    friends.forEach(f => {
+    const breakdownLines = friends.map(f => {
       const friendItems = items.filter(item => item.sharedWith.includes(f.id));
       const totalCost = calculations.itemCosts[f.id] || 0;
       
       if (totalCost > 0) {
         const itemNames = friendItems.map(item => item.name).join(', ');
-        text += `${f.name}: $${totalCost.toFixed(2)} (${itemNames})\n`;
+        return `${f.name}: $${totalCost.toFixed(2)} (${itemNames})`;
       }
-    });
+      return null;
+    }).filter(Boolean);
+    
+    text += breakdownLines.join('\n');
+    text += `\n`;
 
     if (etransferEmail.trim()) {
       text += `\n💰 e-Transfer to: ${etransferEmail.trim()}\n`;
@@ -262,6 +266,7 @@ const App: React.FC = () => {
           <div className="relative z-10 flex flex-col items-start gap-1">
             <h1 className="text-4xl font-black tracking-tight leading-none">Bill Bot</h1>
             <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-[0.2em] whitespace-nowrap">Simple restaurant bill splitter</p>
+            <p className="text-indigo-300/60 text-[8px] font-black uppercase tracking-widest mt-1">made by wubdubs</p>
           </div>
         </header>
 
@@ -546,7 +551,7 @@ const App: React.FC = () => {
           )}
 
           {step === 5 && (
-            <div className="space-y-8 animate-in zoom-in-95 duration-500 flex-1 flex flex-col">
+            <div className="space-y-8 animate-in zoom-in-95 duration-500 flex-1 flex flex-col relative pb-6">
               <div className="text-center">
                 <div className="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-indigo-100 text-white mb-6">
                     <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
@@ -585,7 +590,7 @@ const App: React.FC = () => {
                 </div>
               </div>
               
-              <div className="pt-4 pb-10 space-y-3">
+              <div className="pt-4 pb-4 space-y-3">
                 <div className="flex gap-3">
                   <button onClick={shareResults} className="flex-1 flex items-center justify-center gap-3 bg-indigo-600 text-white px-4 py-5 rounded-[2rem] text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
