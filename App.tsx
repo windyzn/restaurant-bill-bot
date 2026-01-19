@@ -224,7 +224,6 @@ const App: React.FC = () => {
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 2000);
     } catch (err) {
-      // Fallback for some browsers
       const textArea = document.createElement("textarea");
       textArea.value = text;
       document.body.appendChild(textArea);
@@ -349,16 +348,22 @@ const App: React.FC = () => {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
                         <input id="itemPrice" type="number" inputMode="decimal" placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-xl pl-6 pr-4 py-3 text-sm focus:border-indigo-500 outline-none font-mono" />
                       </div>
-                      <select id="itemCat" className="bg-white border border-slate-300 rounded-xl px-3 py-3 text-xs font-bold text-slate-600">
+                      <select id="itemTax" className="bg-white border border-slate-300 rounded-xl px-3 py-3 text-xs font-bold text-slate-600">
                         <option value={TaxCategory.FOOD}>Food (5%)</option>
                         <option value={TaxCategory.CONTAINERS}>Takeout (12%)</option>
+                        <option value="INCLUDED">Tax Included</option>
                       </select>
                     </div>
                     <button onClick={() => {
                         const n = document.getElementById('itemName') as HTMLInputElement;
                         const p = document.getElementById('itemPrice') as HTMLInputElement;
-                        const c = document.getElementById('itemCat') as HTMLSelectElement;
-                        if (n.value && p.value) { addItem(n.value, parseFloat(p.value), c.value as TaxCategory); n.value = ''; p.value = ''; }
+                        const t = document.getElementById('itemTax') as HTMLSelectElement;
+                        if (n.value && p.value) { 
+                          const isInc = t.value === 'INCLUDED';
+                          const cat = isInc ? TaxCategory.FOOD : t.value as TaxCategory;
+                          addItem(n.value, parseFloat(p.value), cat, isInc); 
+                          n.value = ''; p.value = ''; 
+                        }
                       }} className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-100">Add Item</button>
                   </div>
                 ) : (
@@ -433,7 +438,6 @@ const App: React.FC = () => {
               </div>
               
               <div className="pt-4 border-t-2 border-slate-100 space-y-6">
-                {/* TIP SECTION */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <div className="flex flex-col">
@@ -469,7 +473,6 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                {/* DISCOUNT SECTION */}
                 <div className="space-y-3 pt-4 border-t border-slate-100">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Add Discount</label>
