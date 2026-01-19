@@ -266,11 +266,10 @@ const App: React.FC = () => {
           <div className="relative z-10 flex flex-col items-start gap-1">
             <h1 className="text-4xl font-black tracking-tight leading-none">Bill Bot</h1>
             <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-[0.2em] whitespace-nowrap">Simple restaurant bill splitter</p>
-            <p className="text-indigo-300/60 text-[8px] font-black uppercase tracking-widest mt-1">made by wubdubs</p>
           </div>
         </header>
 
-        <main className="p-6 flex-1 bg-white flex flex-col relative">
+        <main className="p-6 flex-1 bg-white flex flex-col relative overflow-y-auto no-scrollbar">
           <StepProgress currentStep={step} onStepClick={goToStep} />
 
           <div className="mb-8 flex items-start gap-4 animate-in fade-in slide-in-from-top-2 duration-700">
@@ -551,7 +550,7 @@ const App: React.FC = () => {
           )}
 
           {step === 5 && (
-            <div className="space-y-8 animate-in zoom-in-95 duration-500 flex-1 flex flex-col relative pb-6">
+            <div className="space-y-8 animate-in zoom-in-95 duration-500 flex-1 flex flex-col relative">
               <div className="text-center">
                 <div className="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-indigo-100 text-white mb-6">
                     <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
@@ -610,11 +609,18 @@ const App: React.FC = () => {
           )}
         </main>
 
-        <footer className="p-8 bg-white border-t border-slate-100 flex gap-4 sticky bottom-0 z-[60]">
-          {step > 1 && <button onClick={prevStep} className="flex-1 bg-white border-2 border-slate-200 text-slate-400 font-black py-4 rounded-2xl hover:bg-slate-50 transition-all uppercase text-[10px] tracking-widest">Back</button>}
-          <button onClick={step === 5 ? () => window.location.reload() : nextStep} disabled={step === 1 && friends.length < 2} className={`flex-[2] py-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl transition-all ${ (step === 1 && friends.length < 2) ? 'bg-slate-300 shadow-none grayscale opacity-50' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98]' }`}>
-            {step === 5 ? 'New Bill Split 🤖' : 'Next Step'}
-          </button>
+        <footer className="p-8 bg-white border-t border-slate-100 flex flex-col gap-4 sticky bottom-0 z-[60]">
+          <div className="flex gap-4">
+            {step > 1 && <button onClick={prevStep} className="flex-1 bg-white border-2 border-slate-200 text-slate-400 font-black py-4 rounded-2xl hover:bg-slate-50 transition-all uppercase text-[10px] tracking-widest">Back</button>}
+            <button onClick={step === 5 ? () => window.location.reload() : nextStep} disabled={step === 1 && friends.length < 2} className={`flex-[2] py-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl transition-all ${ (step === 1 && friends.length < 2) ? 'bg-slate-300 shadow-none grayscale opacity-50' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98]' }`}>
+              {step === 5 ? 'New Bill Split 🤖' : 'Next Step'}
+            </button>
+          </div>
+          <div className="text-center pt-2">
+            <p className="text-[8px] font-black uppercase text-slate-300 tracking-[0.2em] pointer-events-none whitespace-nowrap">
+              - made by wubdubs -
+            </p>
+          </div>
         </footer>
       </div>
     </div>
