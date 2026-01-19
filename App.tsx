@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Friend, BillItem, TaxCategory, GST_RATE, PST_RATE } from './types';
 import { calculateIndividualCosts, solveDebts, calculateItemTotals } from './utils/finance';
 import StepProgress from './components/StepProgress';
@@ -30,9 +30,6 @@ const App: React.FC = () => {
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [manualGrandTotal, setManualGrandTotal] = useState<number>(0);
   const [payments, setPayments] = useState<Record<string, number>>({});
-  const [showQuickEntry, setShowQuickEntry] = useState(false);
-  const [quickAmount, setQuickAmount] = useState<string>('');
-  const [quickIncludesTax, setQuickIncludesTax] = useState(false);
   const [etransferEmail, setEtransferEmail] = useState('');
   const [linkingFriendId, setLinkingFriendId] = useState<string | null>(null);
   const [showCoupleHint, setShowCoupleHint] = useState(false);
@@ -95,16 +92,6 @@ const App: React.FC = () => {
       isTaxIncluded
     };
     setItems([...items, newItem]);
-  };
-
-  const handleQuickTotalAdd = () => {
-    const amount = parseFloat(quickAmount);
-    if (!isNaN(amount) && amount > 0) {
-      addItem("Lump Sum Total", amount, TaxCategory.FOOD, quickIncludesTax);
-      setQuickAmount('');
-      setShowQuickEntry(false);
-      nextStep();
-    }
   };
 
   const removeItem = (id: string) => {
@@ -337,67 +324,50 @@ const App: React.FC = () => {
           {step === 2 && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
               <div className="flex justify-between items-center">
-                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Entry List</h2>
+                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Add Items</h2>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 shadow-inner">
-                <div className="flex p-1 bg-slate-200 rounded-xl">
-                  <button onClick={() => setShowQuickEntry(false)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${!showQuickEntry ? 'bg-white shadow-md text-indigo-600' : 'text-slate-500'}`}>Detailed</button>
-                  <button onClick={() => setShowQuickEntry(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${showQuickEntry ? 'bg-white shadow-md text-indigo-600' : 'text-slate-500'}`}>Lump Sum</button>
+                <div className="space-y-3">
+                  {/* Row 1: Full width Item Name */}
+                  <input id="itemName" type="text" placeholder="Item Name (e.g. Burger)" className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none font-bold" />
+                  
+                  {/* Row 2: Price (70%) and Tax (30%) */}
+                  <div className="flex gap-2">
+                    <div className="flex-[7] relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
+                      <input id="itemPrice" type="number" inputMode="decimal" placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-xl pl-6 pr-4 py-3 text-sm focus:border-indigo-500 outline-none font-mono" />
+                    </div>
+                    <select id="itemTax" className="flex-[3] bg-white border border-slate-300 rounded-xl px-2 py-3 text-[10px] font-bold text-slate-600 focus:border-indigo-500 outline-none">
+                      <option value={TaxCategory.FOOD}>GST 5%</option>
+                      <option value={TaxCategory.CONTAINERS}>PST 12%</option>
+                      <option value="INCLUDED">Tax Included</option>
+                    </select>
+                  </div>
+                  
+                  {/* Row 3: Full width Add Button */}
+                  <button onClick={() => {
+                      const n = document.getElementById('itemName') as HTMLInputElement;
+                      const p = document.getElementById('itemPrice') as HTMLInputElement;
+                      const t = document.getElementById('itemTax') as HTMLSelectElement;
+                      if (n.value && p.value) { 
+                        const isInc = t.value === 'INCLUDED';
+                        const cat = isInc ? TaxCategory.FOOD : t.value as TaxCategory;
+                        addItem(n.value, parseFloat(p.value), cat, isInc); 
+                        n.value = ''; p.value = ''; 
+                      }
+                    }} className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-100 uppercase tracking-widest text-xs">
+                    Add Item to Bill
+                  </button>
                 </div>
-                {!showQuickEntry ? (
-                  <div className="space-y-3">
-                    <input id="itemName" type="text" placeholder="Item Name" className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none font-bold" />
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
-                        <input id="itemPrice" type="number" inputMode="decimal" placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-xl pl-6 pr-4 py-3 text-sm focus:border-indigo-500 outline-none font-mono" />
-                      </div>
-                      <select id="itemTax" className="bg-white border border-slate-300 rounded-xl px-3 py-3 text-xs font-bold text-slate-600">
-                        <option value={TaxCategory.FOOD}>Food (5%)</option>
-                        <option value={TaxCategory.CONTAINERS}>Takeout (12%)</option>
-                        <option value="INCLUDED">Tax Included</option>
-                      </select>
-                    </div>
-                    <button onClick={() => {
-                        const n = document.getElementById('itemName') as HTMLInputElement;
-                        const p = document.getElementById('itemPrice') as HTMLInputElement;
-                        const t = document.getElementById('itemTax') as HTMLSelectElement;
-                        if (n.value && p.value) { 
-                          const isInc = t.value === 'INCLUDED';
-                          const cat = isInc ? TaxCategory.FOOD : t.value as TaxCategory;
-                          addItem(n.value, parseFloat(p.value), cat, isInc); 
-                          n.value = ''; p.value = ''; 
-                        }
-                      }} className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-100">Add Item</button>
-                  </div>
-                ) : (
-                  <div className="space-y-4 py-2 animate-in fade-in zoom-in-95 duration-200">
-                    <div className="relative max-w-[200px] mx-auto">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-600 font-black text-xl">$</span>
-                      <input type="number" inputMode="decimal" value={quickAmount} onChange={(e) => setQuickAmount(e.target.value)} placeholder="0.00" className="w-full border-2 border-slate-300 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black text-slate-800 text-center focus:border-indigo-500 outline-none transition-all shadow-sm" />
-                    </div>
-                    <div className="flex items-center justify-center gap-2">
-                      <button 
-                        onClick={() => setQuickIncludesTax(!quickIncludesTax)}
-                        className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-[11px] font-black uppercase transition-all border-2 ${quickIncludesTax ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-400'}`}
-                      >
-                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${quickIncludesTax ? 'bg-white border-white text-indigo-600' : 'bg-slate-50 border-slate-200'}`}>
-                          {quickIncludesTax && <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"/></svg>}
-                        </div>
-                        Tax is already included
-                      </button>
-                    </div>
-                    <button onClick={handleQuickTotalAdd} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:bg-indigo-700 transition-all shadow-xl">Apply Total & Next</button>
-                  </div>
-                )}
               </div>
+              
               <div className="max-h-[35vh] overflow-y-auto space-y-2 pr-1 no-scrollbar">
                 {items.map(item => (
                   <div key={item.id} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-all group">
                     <div>
                       <p className="font-bold text-slate-800 text-sm">{item.name}</p>
                       <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${item.isTaxIncluded ? 'bg-indigo-50 text-indigo-600' : item.taxCategory === TaxCategory.FOOD ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {item.isTaxIncluded ? 'Tax Included' : item.taxCategory === TaxCategory.FOOD ? 'GST 5%' : 'GST+PST 12%'}
+                        {item.isTaxIncluded ? 'Tax Included' : item.taxCategory === TaxCategory.FOOD ? 'GST 5%' : 'PST 12%'}
                       </span>
                     </div>
                     <div className="flex items-center gap-4">

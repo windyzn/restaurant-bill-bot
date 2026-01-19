@@ -1,7 +1,5 @@
 {
   "name": "Restaurant Bill Bot",
   "description": "A sophisticated restaurant bill splitter designed for BC, Canada, handling GST/PST tax rules and complex itemized splits with friend-to-friend debt resolution and couple functionality.",
-  "requestFramePermissions": [
-    "camera"
-  ]
+  "requestFramePermissions": []
 }
