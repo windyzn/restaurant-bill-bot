@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Friend, BillItem, TaxCategory, GST_RATE, PST_RATE } from './types';
 import { calculateIndividualCosts, solveDebts, calculateItemTotals } from './utils/finance';
 import StepProgress from './components/StepProgress';
@@ -34,15 +34,37 @@ const App: React.FC = () => {
   const [linkingFriendId, setLinkingFriendId] = useState<string | null>(null);
   const [showCoupleHint, setShowCoupleHint] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [nameHistory, setNameHistory] = useState<string[]>([]);
+
+  // Load history from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('bill_bot_name_history');
+    if (saved) {
+      try {
+        setNameHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load name history");
+      }
+    }
+  }, []);
 
   const nextStep = () => setStep(s => Math.min(s + 1, 5));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
   const goToStep = (s: number) => setStep(s);
 
   const addFriend = (name: string) => {
-    if (!name.trim()) return;
-    const newFriend = { id: Math.random().toString(36).substr(2, 9), name };
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    
+    const newFriend = { id: Math.random().toString(36).substr(2, 9), name: trimmedName };
     setFriends([...friends, newFriend]);
+    setNameInput('');
+
+    // Update history
+    const updatedHistory = [trimmedName, ...nameHistory.filter(n => n !== trimmedName)].slice(0, 10);
+    setNameHistory(updatedHistory);
+    localStorage.setItem('bill_bot_name_history', JSON.stringify(updatedHistory));
   };
 
   const removeFriend = (id: string) => {
@@ -245,6 +267,16 @@ const App: React.FC = () => {
     }
   };
 
+  // Suggestions for Step 1
+  const suggestedNames = useMemo(() => {
+    const currentFriendsNames = new Set(friends.map(f => f.name.toLowerCase()));
+    const filtered = nameHistory.filter(name => 
+      !currentFriendsNames.has(name.toLowerCase()) && 
+      (nameInput === '' || name.toLowerCase().includes(nameInput.toLowerCase()))
+    );
+    return nameInput === '' ? filtered.slice(0, 5) : filtered.slice(0, 10);
+  }, [nameHistory, friends, nameInput]);
+
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center p-0 md:p-8">
       <div className="w-full max-w-lg bg-white min-h-screen md:min-h-0 md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-slate-200 relative">
@@ -266,14 +298,39 @@ const App: React.FC = () => {
 
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in duration-500">
-              <div className="relative">
-                <input 
-                  type="text" placeholder="Enter a name..." className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none transition-all pr-14 text-lg font-bold shadow-sm"
-                  onKeyDown={(e) => { if (e.key === 'Enter') { addFriend((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; } }}
-                />
-                <button onClick={() => { const input = document.querySelector('input') as HTMLInputElement; addFriend(input.value); input.value = ''; }} className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 shadow-md transition-all active:scale-95">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
-                </button>
+              <div className="space-y-4">
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    placeholder="Enter a name..." 
+                    className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none transition-all pr-14 text-lg font-bold shadow-sm"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { addFriend(nameInput); } }}
+                  />
+                  <button onClick={() => addFriend(nameInput)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 shadow-md transition-all active:scale-95">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
+                  </button>
+                </div>
+
+                {suggestedNames.length > 0 && (
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-300">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
+                      {nameInput === '' ? 'Recent Friends' : 'Suggestions'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedNames.map((name) => (
+                        <button
+                          key={name}
+                          onClick={() => addFriend(name)}
+                          className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all active:scale-95"
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-3">
@@ -302,7 +359,7 @@ const App: React.FC = () => {
                 })}
               </div>
               
-              <div className="px-1 text-left">
+              <div className="flex items-center justify-between px-1">
                 <button 
                   onClick={() => setShowCoupleHint(!showCoupleHint)}
                   className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-tight hover:text-indigo-500 transition-colors"
@@ -310,12 +367,20 @@ const App: React.FC = () => {
                   <HeartIcon className="w-2.5 h-2.5" />
                   What is linking?
                 </button>
-                {showCoupleHint && (
-                  <p className="mt-1 text-[9px] text-slate-400 font-medium leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    Linking two people combines their debt. They will be treated as one unit in the final results. Tap the heart icon on any person to start linking!
-                  </p>
+                {nameHistory.length > 0 && (
+                  <button 
+                    onClick={() => { setNameHistory([]); localStorage.removeItem('bill_bot_name_history'); }}
+                    className="text-[10px] font-bold text-slate-300 uppercase tracking-tight hover:text-rose-400 transition-colors"
+                  >
+                    Clear History
+                  </button>
                 )}
               </div>
+              {showCoupleHint && (
+                <p className="mt-1 text-[9px] text-slate-400 font-medium leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  Linking two people combines their debt. They will be treated as one unit in the final results. Tap the heart icon on any person to start linking!
+                </p>
+              )}
 
               {linkingFriendId && <div className="text-center animate-pulse text-xs font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 py-2 rounded-xl">Select another person to link with</div>}
             </div>
@@ -328,10 +393,8 @@ const App: React.FC = () => {
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 shadow-inner">
                 <div className="space-y-3">
-                  {/* Row 1: Full width Item Name */}
                   <input id="itemName" type="text" placeholder="Item Name (e.g. Burger)" className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none font-bold" />
                   
-                  {/* Row 2: Price (70%) and Tax (30%) */}
                   <div className="flex gap-2">
                     <div className="flex-[7] relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
@@ -344,7 +407,6 @@ const App: React.FC = () => {
                     </select>
                   </div>
                   
-                  {/* Row 3: Full width Add Button */}
                   <button onClick={() => {
                       const n = document.getElementById('itemName') as HTMLInputElement;
                       const p = document.getElementById('itemPrice') as HTMLInputElement;
